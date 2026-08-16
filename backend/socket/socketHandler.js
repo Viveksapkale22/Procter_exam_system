@@ -3,18 +3,29 @@ const { Server } = require('socket.io');
 let io;
 
 function initSocket(server) {
+  // Explicit base allowed origins
   const allowedOrigins = [
     'http://localhost:5173',
-    process.env.FRONTEND_URL || 'https://procter-exam-system.vercel.app'
+    'https://procter-exam-system.vercel.app'
   ];
+
+  // Automatically strip trailing slashes from environment variables
+  if (process.env.FRONTEND_URL) {
+    const cleanFrontendUrl = process.env.FRONTEND_URL.replace(/\/$/, '');
+    if (!allowedOrigins.includes(cleanFrontendUrl)) {
+      allowedOrigins.push(cleanFrontendUrl);
+    }
+  }
 
   io = new Server(server, {
     cors: {
       origin: function (origin, callback) {
+        // Allow requests with no origin (mobile apps/curl) or explicit allowed origins
         if (!origin || allowedOrigins.includes(origin)) {
           callback(null, true);
         } else {
-          callback(new Error('Not allowed by Socket CORS'));
+          // Returning false safely rejects without throwing uncaught server errors
+          callback(null, false);
         }
       },
       methods: ['GET', 'POST'],
