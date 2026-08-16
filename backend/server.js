@@ -9,8 +9,6 @@ const authRoutes = require('./routes/authRoutes');
 const examRoutes = require('./routes/examRoutes');
 const submissionRoutes = require('./routes/submissionRoutes');
 
-// Optional: Keep DNS fix if required for local Atlas connection, 
-// but wrapped to avoid overriding Render's internal network DNS if issues occur
 const dns = require('dns');
 if (process.env.NODE_ENV !== 'production') {
   dns.setServers(['8.8.8.8', '8.8.4.4']);
@@ -19,21 +17,33 @@ if (process.env.NODE_ENV !== 'production') {
 const app = express();
 const server = http.createServer(app);
 
-// Production CORS setup
+// Explicit list of allowed origins
 const allowedOrigins = [
   'http://localhost:5173',
-  process.env.FRONTEND_URL || 'https://procter-exam-system.vercel.app'
+  'https://procter-exam-system.vercel.app'
 ];
+
+// Automatically sanitize process.env.FRONTEND_URL (removes trailing slashes if present)
+if (process.env.FRONTEND_URL) {
+  const cleanFrontendUrl = process.env.FRONTEND_URL.replace(/\/$/, '');
+  if (!allowedOrigins.includes(cleanFrontendUrl)) {
+    allowedOrigins.push(cleanFrontendUrl);
+  }
+}
 
 app.use(cors({
   origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+    // Allow server-to-server requests or matching origin domains
+    if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      // Pass false instead of throwing an Error object to prevent 500 crashes
+      callback(null, false);
     }
   },
-  credentials: true
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 app.use(express.json({ limit: '10mb' }));
