@@ -6,8 +6,3 @@ export default {
   },
   plugins: [],
 };
-{
-  "files.associations": {
-    "*.css": "tailwindcss"
-  }
-}
