@@ -46,6 +46,7 @@ exports.submitExam = async (req, res) => {
     const submission = await Submission.create({
       studentId: req.user._id,
       examId,
+      subject: exam.subject, // Explicitly saved to the database record
       assignedQuestions: assignedIds,
       answers: (answers || []).map((answer, index) => ({
         questionId: answer.questionId,
@@ -63,11 +64,12 @@ exports.submitExam = async (req, res) => {
       id: submission._id,
       studentName: req.user.name,
       rollNumber: req.user.rollNumber,
+      subject: exam.subject, // Transmitted for real-time subject-wise dashboard updates
       score: actualScore,
       tabSwitchCount: Number(tabSwitchCount) || 0,
       status: status || 'SUBMITTED_NORMAL',
       examTitle: exam.title,
-      submittedAt: submission.createdAt,
+      submittedAt: submission.createdAt || submission.submittedAt,
       questionResults,
     });
 
@@ -85,24 +87,31 @@ exports.getSubmissionFeed = async (req, res) => {
   try {
     const submissions = await Submission.find({})
       .populate('studentId', 'name rollNumber department')
-      .populate('examId', 'title')
+      .populate('examId', 'title subject') // Included subject field from Exam schema
       .sort({ createdAt: -1 });
 
-    const feed = submissions.map((submission) => ({
-      id: submission._id,
-      studentName: submission.studentId?.name || 'Unknown',
-      rollNumber: submission.studentId?.rollNumber || 'N/A',
-      examTitle: submission.examId?.title || 'Unknown Exam',
-      score: submission.score,
-      tabSwitchCount: submission.tabSwitchCount,
-      status: submission.status,
-      submittedAt: submission.submittedAt,
-      questionResults: Array.isArray(submission.questionResults) ? submission.questionResults : [],
-    }));
+    const feed = submissions.map((submission) => {
+      const results = Array.isArray(submission.questionResults) ? submission.questionResults : [];
+
+      return {
+        id: submission._id,
+        _id: submission._id,
+        studentName: submission.studentId?.name || 'Unknown',
+        rollNumber: submission.studentId?.rollNumber || 'N/A',
+        examTitle: submission.examId?.title || 'Unknown Exam',
+        subject: submission.subject || submission.examId?.subject || 'Uncategorized', // Resolves subject accurately
+        score: submission.score,
+        tabSwitchCount: submission.tabSwitchCount,
+        status: submission.status,
+        submittedAt: submission.submittedAt,
+        questionResults: results,
+        answers: results, // Provided as alias so frontend "View Info" modal parses questions seamlessly
+      };
+    });
 
     return res.json(feed);
   } catch (error) {
-    return res.status(500).json({ message: 'Unable to load feed.' });
+    return res.status(500).json({ message: 'Unable to load feed.', error: error.message });
   }
 };
 

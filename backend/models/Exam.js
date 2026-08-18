@@ -1,22 +1,19 @@
 const mongoose = require('mongoose');
 
-const QuestionSchema = new mongoose.Schema(
-  {
-    questionText: { type: String, required: true },
-    options: { type: [String], required: true, validate: [arr => arr.length >= 2, 'Must have at least 2 options'] },
-    correctOptionIndex: { type: Number, required: true, min: 0 },
-  },
-  { _id: true }
-);
+const questionSchema = new mongoose.Schema({
+  questionText: { type: String, required: true },
+  options: [{ type: String, required: true }],
+  correctOptionIndex: { type: Number, required: true },
+  level: { type: String, enum: ['Easy', 'Medium', 'Hard'], default: 'Medium' }
+});
 
-const ExamSchema = new mongoose.Schema(
-  {
-    title: { type: String, required: true, trim: true },
-    durationSeconds: { type: Number, default: 120 },
-    isLocked: { type: Boolean, default: true },
-    questionPool: [QuestionSchema],
-  },
-  { timestamps: true }
-);
+const examSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  subject: { type: String, required: true },
+  durationSeconds: { type: Number, default: 120 },
+  displayCount: { type: Number, default: 5 },
+  isLocked: { type: Boolean, default: false },
+  questionPool: [questionSchema]
+}, { timestamps: true });
 
-module.exports = mongoose.model('Exam', ExamSchema);
+module.exports = mongoose.model('Exam', examSchema);

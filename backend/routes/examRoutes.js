@@ -3,7 +3,8 @@ const {
   getExams,
   createExam,
   startExamSession,
-  toggleExamLock,
+  toggleLock,
+  deleteExam,
 } = require('../controllers/examController');
 const { protect, requireAdmin } = require('../middleware/authMiddleware');
 
@@ -12,6 +13,7 @@ const router = express.Router();
 router.get('/', protect, getExams);
 router.post('/create', protect, requireAdmin, createExam);
 router.get('/:examId/start', protect, startExamSession);
-router.patch('/:examId/toggle-lock', protect, requireAdmin, toggleExamLock);
+router.patch('/:examId/toggle-lock', protect, requireAdmin, toggleLock);
+router.delete('/:examId', protect, requireAdmin, deleteExam);
 
 module.exports = router;

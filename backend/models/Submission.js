@@ -21,23 +21,25 @@ const QuestionResultSchema = new mongoose.Schema(
   { _id: false }
 );
 
-const SubmissionSchema = new mongoose.Schema(
-  {
-    studentId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    examId: { type: mongoose.Schema.Types.ObjectId, ref: 'Exam', required: true },
-    assignedQuestions: [{ type: String }],
-    answers: [AnswerSchema],
-    questionResults: [QuestionResultSchema],
-    score: { type: Number, default: 0 },
-    tabSwitchCount: { type: Number, default: 0 },
-    status: {
-      type: String,
-      enum: ['SUBMITTED_NORMAL', 'AUTO_SUBMITTED_TIMEOUT', 'DISQUALIFIED_CHEATING'],
-      default: 'SUBMITTED_NORMAL',
-    },
-    submittedAt: { type: Date, default: Date.now },
-  },
-  { timestamps: true }
-);
+const answerDetailSchema = new mongoose.Schema({
+  questionId: { type: mongoose.Schema.Types.ObjectId },
+  questionText: { type: String },
+  options: [{ type: String }],
+  selectedOption: { type: Number, default: -1 },
+  correctOptionIndex: { type: Number },
+  isCorrect: { type: Boolean, default: false }
+});
 
-module.exports = mongoose.model('Submission', SubmissionSchema);
+const submissionSchema = new mongoose.Schema({
+  examId: { type: mongoose.Schema.Types.ObjectId, ref: 'Exam', required: true },
+  studentId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  studentName: { type: String },
+  rollNumber: { type: String },
+  subject: { type: String, required: true },
+  score: { type: Number, default: 0 },
+  status: { type: String, default: 'SUBMITTED_NORMAL' },
+  tabSwitchCount: { type: Number, default: 0 },
+  answers: [answerDetailSchema]
+}, { timestamps: true });
+
+module.exports = mongoose.model('Submission', submissionSchema);
