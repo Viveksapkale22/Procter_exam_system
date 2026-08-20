@@ -2,8 +2,17 @@ import { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import axios from 'axios';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { API_BASE } from '../config/api';
 
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000/api';
+const readStoredJson = (key) => {
+  try {
+    const value = localStorage.getItem(key);
+    return value ? JSON.parse(value) : null;
+  } catch {
+    localStorage.removeItem(key);
+    return null;
+  }
+};
 
 export default function ExamScreen() {
   const { examId } = useParams();
@@ -12,13 +21,16 @@ export default function ExamScreen() {
 
   // Storage key helpers for refresh persistence
   const STORAGE_KEYS = useMemo(() => ({
-    ANSWERS: `exam_${examId}_answers`,
-    TIME: `exam_${examId}_time`,
-    INDEX: `exam_${examId}_index`,
-    WARNINGS: `exam_${examId}_warnings`,
-  }), [examId]);
+    ANSWERS: `exam_${user?.id || 'anonymous'}_${examId}_answers`,
+    TIME: `exam_${user?.id || 'anonymous'}_${examId}_time`,
+    INDEX: `exam_${user?.id || 'anonymous'}_${examId}_index`,
+    WARNINGS: `exam_${user?.id || 'anonymous'}_${examId}_warnings`,
+    SESSION: `exam_${user?.id || 'anonymous'}_${examId}_session`,
+  }), [examId, user?.id]);
 
-  const [examData, setExamData] = useState(null);
+  const [examData, setExamData] = useState(() =>
+    readStoredJson(`exam_${user?.id || 'anonymous'}_${examId}_session`)
+  );
   const [statusMessage, setStatusMessage] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -28,8 +40,7 @@ export default function ExamScreen() {
 
   // 2. REFRESH PERSISTENCE INITIALIZERS
   const [answers, setAnswers] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_KEYS.ANSWERS);
-    return saved ? JSON.parse(saved) : {};
+    return readStoredJson(STORAGE_KEYS.ANSWERS) || {};
   });
 
   const [timeLeft, setTimeLeft] = useState(() => {
@@ -62,6 +73,14 @@ export default function ExamScreen() {
     }
   }, [answers, currentIndex, warningCount, timeLeft, submitted, STORAGE_KEYS]);
 
+  // Preserve the originally assigned question set. Without this, the start
+  // endpoint selects a fresh random set after every browser refresh.
+  useEffect(() => {
+    if (examData && !submitted) {
+      localStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(examData));
+    }
+  }, [examData, submitted, STORAGE_KEYS.SESSION]);
+
   // Auth Guard & Exam Initial Fetch
   useEffect(() => {
     if (!user || user.role !== 'student') {
@@ -70,6 +89,15 @@ export default function ExamScreen() {
     }
 
     const fetchExam = async () => {
+      const savedSession = readStoredJson(STORAGE_KEYS.SESSION);
+      if (savedSession?.questions?.length) {
+        setExamData(savedSession);
+        if (localStorage.getItem(STORAGE_KEYS.TIME) === null) {
+          setTimeLeft(savedSession.durationSeconds || 120);
+        }
+        return;
+      }
+
       try {
         const response = await axios.get(`${API_BASE}/exams/${examId}/start`, {
           headers: { Authorization: `Bearer ${token}` },
@@ -83,7 +111,7 @@ export default function ExamScreen() {
       }
     };
     fetchExam();
-  }, [examId, navigate, token, user, STORAGE_KEYS.TIME]);
+  }, [examId, navigate, token, user, STORAGE_KEYS.SESSION, STORAGE_KEYS.TIME]);
 
   const currentQuestions = useMemo(() => examData?.questions || [], [examData]);
 
@@ -127,9 +155,6 @@ export default function ExamScreen() {
         : statusReason === 'AUTO_SUBMITTED_TIMEOUT' ? 'Time expired! Your exam was automatically submitted.'
         : 'Test submitted successfully.'
       );
-      
-      // Clear auth token to force logout and session end
-      localStorage.removeItem('token'); 
       
       // Auto redirect to student dashboard after 3 seconds
       setTimeout(() => navigate('/student'), 3000);

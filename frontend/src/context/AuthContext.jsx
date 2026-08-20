@@ -4,13 +4,23 @@ import { useNavigate } from 'react-router-dom';
 const AuthContext = createContext(null);
 
 const STORAGE_KEY = 'proctor_auth';
+const TOKEN_KEY = 'proctor_token';
+
+const readStoredUser = () => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved) : null;
+  } catch {
+    localStorage.removeItem(STORAGE_KEY);
+    return null;
+  }
+};
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : null;
+    return readStoredUser();
   });
-  const [token, setToken] = useState(() => localStorage.getItem('proctor_token') || '');
+  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY) || '');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -23,13 +33,17 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (token) {
-      localStorage.setItem('proctor_token', token);
+      localStorage.setItem(TOKEN_KEY, token);
     } else {
-      localStorage.removeItem('proctor_token');
+      localStorage.removeItem(TOKEN_KEY);
     }
   }, [token]);
 
   const login = ({ userData, authToken }) => {
+    // Write synchronously so a refresh immediately after navigation cannot
+    // race the React persistence effect.
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(userData));
+    localStorage.setItem(TOKEN_KEY, authToken);
     setUser(userData);
     setToken(authToken);
     if (userData.role === 'admin') {
@@ -40,6 +54,8 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
+    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(TOKEN_KEY);
     setUser(null);
     setToken('');
     navigate('/');

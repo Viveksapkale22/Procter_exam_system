@@ -9,19 +9,28 @@ function initSocket(server) {
     'https://procter-exam-system.vercel.app'
   ];
 
-  // Automatically strip trailing slashes from environment variables
-  if (process.env.FRONTEND_URL) {
-    const cleanFrontendUrl = process.env.FRONTEND_URL.replace(/\/$/, '');
-    if (!allowedOrigins.includes(cleanFrontendUrl)) {
-      allowedOrigins.push(cleanFrontendUrl);
+  const configuredOrigins = (process.env.FRONTEND_URL || '')
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+  configuredOrigins.forEach((origin) => {
+    if (!allowedOrigins.includes(origin)) allowedOrigins.push(origin);
+  });
+
+  const isAllowedOrigin = (origin) => {
+    if (!origin || allowedOrigins.includes(origin)) return true;
+    try {
+      return new URL(origin).hostname.endsWith('.vercel.app');
+    } catch {
+      return false;
     }
-  }
+  };
 
   io = new Server(server, {
     cors: {
       origin: function (origin, callback) {
         // Allow requests with no origin (mobile apps/curl) or explicit allowed origins
-        if (!origin || allowedOrigins.includes(origin)) {
+        if (isAllowedOrigin(origin)) {
           callback(null, true);
         } else {
           // Returning false safely rejects without throwing uncaught server errors

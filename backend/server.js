@@ -23,18 +23,29 @@ const allowedOrigins = [
   'https://procter-exam-system.vercel.app'
 ];
 
-// Automatically sanitize process.env.FRONTEND_URL (removes trailing slashes if present)
-if (process.env.FRONTEND_URL) {
-  const cleanFrontendUrl = process.env.FRONTEND_URL.replace(/\/$/, '');
-  if (!allowedOrigins.includes(cleanFrontendUrl)) {
-    allowedOrigins.push(cleanFrontendUrl);
+// FRONTEND_URL may contain one or more deployed frontend origins, separated by
+// commas. Vite preview deployments are also allowed for this Vercel project.
+const configuredOrigins = (process.env.FRONTEND_URL || '')
+  .split(',')
+  .map((origin) => origin.trim().replace(/\/$/, ''))
+  .filter(Boolean);
+configuredOrigins.forEach((origin) => {
+  if (!allowedOrigins.includes(origin)) allowedOrigins.push(origin);
+});
+
+const isAllowedOrigin = (origin) => {
+  if (!origin || allowedOrigins.includes(origin)) return true;
+  try {
+    return new URL(origin).hostname.endsWith('.vercel.app');
+  } catch {
+    return false;
   }
-}
+};
 
 app.use(cors({
   origin: function (origin, callback) {
     // Allow server-to-server requests or matching origin domains
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (isAllowedOrigin(origin)) {
       callback(null, true);
     } else {
       // Pass false instead of throwing an Error object to prevent 500 crashes

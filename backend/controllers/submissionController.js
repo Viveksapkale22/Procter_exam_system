@@ -27,8 +27,40 @@ const buildQuestionResults = (exam, assignedQuestionIds = [], answers = []) => {
   });
 };
 
+const formatSubmission = (submission, includeQuestionResults = false) => ({
+  id: submission._id,
+  _id: submission._id,
+  studentName: submission.studentId?.name || 'Unknown',
+  rollNumber: submission.studentId?.rollNumber || 'N/A',
+  examTitle: submission.examId?.title || 'Unknown Exam',
+  subject: submission.subject || submission.examId?.subject || 'Uncategorized',
+  score: submission.score,
+  tabSwitchCount: submission.tabSwitchCount,
+  status: submission.status,
+  submittedAt: submission.submittedAt || submission.createdAt,
+  ...(includeQuestionResults ? { questionResults: submission.questionResults || [] } : {}),
+});
+
+const getStoredOrRebuiltResults = (submission) => {
+  if (Array.isArray(submission.questionResults) && submission.questionResults.length > 0) {
+    return submission.questionResults;
+  }
+
+  const assignedIds = submission.assignedQuestions?.length
+    ? submission.assignedQuestions
+    : (submission.answers || []).map((answer) => answer.questionId);
+
+  return submission.examId?.questionPool
+    ? buildQuestionResults(submission.examId, assignedIds, submission.answers || [])
+    : [];
+};
+
 exports.submitExam = async (req, res) => {
   try {
+    if (req.user.role !== 'student') {
+      return res.status(403).json({ message: 'Only students can submit an exam.' });
+    }
+
     const { examId, answers, tabSwitchCount, status, assignedQuestions } = req.body;
 
     const exam = await Exam.findById(examId);
@@ -90,28 +122,60 @@ exports.getSubmissionFeed = async (req, res) => {
       .populate('examId', 'title subject') // Included subject field from Exam schema
       .sort({ createdAt: -1 });
 
-    const feed = submissions.map((submission) => {
-      const results = Array.isArray(submission.questionResults) ? submission.questionResults : [];
-
-      return {
-        id: submission._id,
-        _id: submission._id,
-        studentName: submission.studentId?.name || 'Unknown',
-        rollNumber: submission.studentId?.rollNumber || 'N/A',
-        examTitle: submission.examId?.title || 'Unknown Exam',
-        subject: submission.subject || submission.examId?.subject || 'Uncategorized', // Resolves subject accurately
-        score: submission.score,
-        tabSwitchCount: submission.tabSwitchCount,
-        status: submission.status,
-        submittedAt: submission.submittedAt,
-        questionResults: results,
-        answers: results, // Provided as alias so frontend "View Info" modal parses questions seamlessly
-      };
-    });
+    const feed = submissions.map((submission) => formatSubmission(submission));
 
     return res.json(feed);
   } catch (error) {
     return res.status(500).json({ message: 'Unable to load feed.', error: error.message });
+  }
+};
+
+exports.getSubmissionDetails = async (req, res) => {
+  try {
+    const submission = await Submission.findById(req.params.submissionId)
+      .populate('studentId', 'name rollNumber department')
+      .populate('examId', 'title subject questionPool');
+
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found.' });
+    }
+
+    const details = formatSubmission(submission, true);
+    details.questionResults = getStoredOrRebuiltResults(submission);
+    return res.json(details);
+  } catch (error) {
+    return res.status(500).json({ message: 'Unable to load submission details.', error: error.message });
+  }
+};
+
+exports.getMySubmissionFeed = async (req, res) => {
+  try {
+    const submissions = await Submission.find({ studentId: req.user._id })
+      .populate('examId', 'title subject')
+      .sort({ createdAt: -1 });
+
+    return res.json(submissions.map((submission) => formatSubmission(submission)));
+  } catch (error) {
+    return res.status(500).json({ message: 'Unable to load your submissions.', error: error.message });
+  }
+};
+
+exports.getMySubmissionDetails = async (req, res) => {
+  try {
+    const submission = await Submission.findOne({
+      _id: req.params.submissionId,
+      studentId: req.user._id,
+    }).populate('examId', 'title subject questionPool');
+
+    if (!submission) {
+      return res.status(404).json({ message: 'Submission not found.' });
+    }
+
+    const details = formatSubmission(submission, true);
+    details.questionResults = getStoredOrRebuiltResults(submission);
+    return res.json(details);
+  } catch (error) {
+    return res.status(500).json({ message: 'Unable to load your submission details.', error: error.message });
   }
 };
 
@@ -126,5 +190,14 @@ exports.deleteSubmission = async (req, res) => {
     return res.json({ message: 'Submission deleted successfully.' });
   } catch (error) {
     return res.status(500).json({ message: 'Unable to delete submission.', error: error.message });
+  }
+};
+
+exports.deleteSubmissionsBySubject = async (req, res) => {
+  try {
+    const result = await Submission.deleteMany({ subject: req.params.subject });
+    return res.json({ message: 'Subject submissions deleted successfully.', deletedCount: result.deletedCount });
+  } catch (error) {
+    return res.status(500).json({ message: 'Unable to delete subject submissions.', error: error.message });
   }
 };

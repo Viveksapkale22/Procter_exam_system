@@ -3,8 +3,7 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
-
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:5000/api';
+import { API_BASE, SOCKET_URL } from '../config/api';
 
 const createQuestionTemplate = () => ({
   questionText: '',
@@ -25,6 +24,7 @@ export default function AdminDashboard() {
   const [examSubject, setExamSubject] = useState('');
   const [durationSeconds, setDurationSeconds] = useState(120);
   const [displayCount, setDisplayCount] = useState(5);
+  const [editingExamId, setEditingExamId] = useState(null);
   const [questionPool, setQuestionPool] = useState([
     createQuestionTemplate(),
     createQuestionTemplate(),
@@ -38,6 +38,9 @@ export default function AdminDashboard() {
   const [rawSubmissions, setRawSubmissions] = useState([]);
   const [socketState, setSocketState] = useState('offline');
   const [expandedStudent, setExpandedStudent] = useState(null);
+  const [submissionDetails, setSubmissionDetails] = useState({});
+  const [detailsLoading, setDetailsLoading] = useState({});
+  const [detailsError, setDetailsError] = useState({});
 
   // Subject Accordion State (tracks expanded subject names)
   const [expandedSubjects, setExpandedSubjects] = useState([]);
@@ -50,12 +53,19 @@ export default function AdminDashboard() {
 
     fetchInitialData();
 
-    const socket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000', {
+    const socket = io(SOCKET_URL, {
       auth: { token },
+      transports: ['websocket', 'polling'],
+      timeout: 10000,
     });
 
+    setSocketState('connecting');
     socket.on('connect', () => setSocketState('online'));
     socket.on('disconnect', () => setSocketState('offline'));
+    socket.on('connect_error', (error) => {
+      console.error('Socket connection failed', error.message);
+      setSocketState('offline');
+    });
     socket.on('exam-lock-status', ({ examId, isLocked }) => {
       setExams((prev) => prev.map((e) => (e._id === examId ? { ...e, isLocked } : e)));
     });
@@ -118,6 +128,59 @@ export default function AdminDashboard() {
     );
   };
 
+  const toggleSubmissionDetails = async (submissionId) => {
+    if (expandedStudent === submissionId) {
+      setExpandedStudent(null);
+      return;
+    }
+
+    setExpandedStudent(submissionId);
+    if (submissionDetails[submissionId] || detailsLoading[submissionId]) return;
+
+    setDetailsLoading((previous) => ({ ...previous, [submissionId]: true }));
+    setDetailsError((previous) => ({ ...previous, [submissionId]: '' }));
+    try {
+      const response = await axios.get(`${API_BASE}/submissions/${submissionId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setSubmissionDetails((previous) => ({ ...previous, [submissionId]: response.data }));
+    } catch (error) {
+      setDetailsError((previous) => ({
+        ...previous,
+        [submissionId]: error.response?.data?.message || 'Unable to load this evaluation.',
+      }));
+    } finally {
+      setDetailsLoading((previous) => ({ ...previous, [submissionId]: false }));
+    }
+  };
+
+  const resetExamForm = () => {
+    setEditingExamId(null);
+    setExamTitle('');
+    setExamSubject('');
+    setDurationSeconds(120);
+    setDisplayCount(5);
+    setQuestionPool(Array.from({ length: 5 }, createQuestionTemplate));
+  };
+
+  const startEditExam = (exam) => {
+    setEditingExamId(exam._id);
+    setExamTitle(exam.title || '');
+    setExamSubject(exam.subject || '');
+    setDurationSeconds(exam.durationSeconds || 120);
+    setDisplayCount(exam.displayCount || 5);
+    setQuestionPool(
+      (exam.questionPool || []).map((question) => ({
+        _id: question._id,
+        questionText: question.questionText || '',
+        options: [...(question.options || []), '', '', '', ''].slice(0, 4),
+        correctOptionIndex: Number(question.correctOptionIndex) || 0,
+        level: question.level || 'Medium',
+      }))
+    );
+    setActiveTab('create');
+  };
+
   // Question Form Handlers
   const addQuestionField = () => setQuestionPool((prev) => [...prev, createQuestionTemplate()]);
 
@@ -146,10 +209,11 @@ export default function AdminDashboard() {
     });
   };
 
-  // Exam Creation
-  const createExam = async () => {
+  // Exam creation and editing share the same validated form.
+  const saveExam = async () => {
     const cleanedQuestions = questionPool
       .map((q) => ({
+        ...(q._id ? { _id: q._id } : {}),
         questionText: String(q.questionText || '').trim(),
         options: (q.options || []).map((opt) => String(opt || '').trim()).filter(Boolean),
         correctOptionIndex: Number(q.correctOptionIndex),
@@ -168,34 +232,59 @@ export default function AdminDashboard() {
     }
 
     try {
-      const response = await axios.post(
+      const payload = {
+        title: examTitle.trim(),
+        subject: examSubject.trim(),
+        durationSeconds: Number(durationSeconds) || 120,
+        displayCount: Number(displayCount) || 5,
+        questionPool: cleanedQuestions,
+      };
+      const response = editingExamId
+        ? await axios.put(`${API_BASE}/exams/${editingExamId}`, payload, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+        : await axios.post(
         `${API_BASE}/exams/create`,
-        {
-          title: examTitle.trim(),
-          subject: examSubject.trim(),
-          durationSeconds: Number(durationSeconds) || 120,
-          displayCount: Number(displayCount) || 5,
-          questionPool: cleanedQuestions,
-        },
+        payload,
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      setExams((prev) => [response.data, ...prev]);
-      setExamTitle('');
-      setExamSubject('');
-      setDurationSeconds(120);
-      setDisplayCount(5);
-      setQuestionPool([
-        createQuestionTemplate(),
-        createQuestionTemplate(),
-        createQuestionTemplate(),
-        createQuestionTemplate(),
-        createQuestionTemplate(),
-      ]);
-      alert('Exam created successfully!');
+      setExams((prev) =>
+        editingExamId
+          ? prev.map((exam) => (exam._id === editingExamId ? response.data : exam))
+          : [response.data, ...prev]
+      );
+      resetExamForm();
+      alert(editingExamId ? 'Exam updated successfully!' : 'Exam created successfully!');
       setActiveTab('control');
     } catch (error) {
-      alert(error.response?.data?.message || 'Failed to create exam.');
+      alert(error.response?.data?.message || `Failed to ${editingExamId ? 'update' : 'create'} exam.`);
+    }
+  };
+
+  const deleteSubmission = async (submissionId) => {
+    if (!window.confirm('Delete this submission permanently?')) return;
+    try {
+      await axios.delete(`${API_BASE}/submissions/${submissionId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setRawSubmissions((previous) => previous.filter((submission) => (submission.id || submission._id) !== submissionId));
+      setExpandedStudent((previous) => (previous === submissionId ? null : previous));
+    } catch (error) {
+      alert(error.response?.data?.message || 'Failed to delete submission.');
+    }
+  };
+
+  const deleteSubjectSubmissions = async (subject, count) => {
+    if (!window.confirm(`Delete all ${count} submission(s) for ${subject}? This cannot be undone.`)) return;
+    try {
+      await axios.delete(`${API_BASE}/submissions/subject/${encodeURIComponent(subject)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setRawSubmissions((previous) => previous.filter((submission) => submission.subject !== subject));
+      setExpandedSubjects((previous) => previous.filter((item) => item !== subject));
+    } catch (error) {
+      alert(error.response?.data?.message || 'Failed to delete subject submissions.');
     }
   };
 
@@ -280,7 +369,12 @@ export default function AdminDashboard() {
         {activeTab === 'create' && (
           <div className="card p-6 bg-white rounded-xl shadow-sm border border-slate-200">
             <div className="mb-6 flex items-center justify-between border-b pb-4">
-              <h3 className="text-2xl font-bold text-slate-800">Create New Exam</h3>
+              <div>
+                <h3 className="text-2xl font-bold text-slate-800">
+                  {editingExamId ? 'Edit Exam' : 'Create New Exam'}
+                </h3>
+                {editingExamId && <p className="mt-1 text-xs font-medium text-amber-700">Editing an existing exam</p>}
+              </div>
               <span className="rounded-full bg-sky-100 px-3 py-1 text-sm font-bold text-sky-700">
                 Pool Size: {questionPool.length} Questions
               </span>
@@ -390,12 +484,21 @@ export default function AdminDashboard() {
               >
                 + Add Another Question
               </button>
+              {editingExamId && (
+                <button
+                  type="button"
+                  onClick={resetExamForm}
+                  className="rounded-xl border border-slate-300 px-4 py-3 font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel Edit
+                </button>
+              )}
               <button
                 type="button"
-                onClick={createExam}
+                onClick={saveExam}
                 className="w-1/2 rounded-xl bg-sky-600 px-4 py-3 font-bold text-white hover:bg-sky-700 transition-colors"
               >
-                Save & Publish Exam
+                {editingExamId ? 'Save Exam Changes' : 'Save & Publish Exam'}
               </button>
             </div>
           </div>
@@ -412,7 +515,7 @@ export default function AdminDashboard() {
                 exams.map((exam) => (
                   <div
                     key={exam._id}
-                    className="flex items-center justify-between rounded-xl border border-slate-200 p-5 hover:bg-slate-50 transition-colors"
+                    className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between rounded-xl border border-slate-200 p-5 hover:bg-slate-50 transition-colors"
                   >
                     <div>
                       <p className="font-bold text-lg text-slate-900">{exam.title}</p>
@@ -422,7 +525,13 @@ export default function AdminDashboard() {
                         {exam.durationSeconds || 120}s Duration
                       </p>
                     </div>
-                    <div className="flex gap-3">
+                    <div className="flex flex-wrap gap-3">
+                      <button
+                        onClick={() => startEditExam(exam)}
+                        className="rounded-lg px-4 py-2 font-bold text-sky-700 bg-sky-50 hover:bg-sky-100 shadow-sm"
+                      >
+                        Edit
+                      </button>
                       <button
                         onClick={() => toggleLock(exam._id)}
                         className={`rounded-lg px-5 py-2 font-bold text-white shadow-sm transition-colors ${
@@ -517,6 +626,16 @@ export default function AdminDashboard() {
                       {/* ACCORDION CONTENT */}
                       {isSubjectExpanded && (
                         <div className="overflow-x-auto border-t border-slate-200">
+                          <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-rose-50 px-4 py-3">
+                            <p className="text-xs font-medium text-rose-800">Remove all records in this subject when they are no longer needed.</p>
+                            <button
+                              type="button"
+                              onClick={() => deleteSubjectSubmissions(subject, submissionsList.length)}
+                              className="shrink-0 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-rose-700"
+                            >
+                              Delete Subject Data
+                            </button>
+                          </div>
                           <table className="w-full text-left text-sm text-slate-700">
                             <thead className="bg-slate-50 border-b border-slate-200">
                               <tr>
@@ -556,16 +675,25 @@ export default function AdminDashboard() {
                                         </span>
                                       </td>
                                       <td className="p-4">
-                                        <button
-                                          onClick={() => setExpandedStudent(isExpanded ? null : subId)}
-                                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
-                                            isExpanded
-                                              ? 'bg-slate-800 text-white'
-                                              : 'bg-sky-50 text-sky-700 hover:bg-sky-100'
-                                          }`}
-                                        >
-                                          {isExpanded ? 'Hide Info ▲' : 'View Info ▼'}
-                                        </button>
+                                        <div className="flex items-center gap-2">
+                                          <button
+                                            onClick={() => toggleSubmissionDetails(subId)}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-sm ${
+                                              isExpanded
+                                                ? 'bg-slate-800 text-white'
+                                                : 'bg-sky-50 text-sky-700 hover:bg-sky-100'
+                                            }`}
+                                          >
+                                            {isExpanded ? 'Hide Info ▲' : 'View Info ▼'}
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={() => deleteSubmission(subId)}
+                                            className="rounded-lg bg-rose-50 px-3 py-1.5 text-xs font-bold text-rose-700 hover:bg-rose-100"
+                                          >
+                                            Delete
+                                          </button>
+                                        </div>
                                       </td>
                                     </tr>
 
@@ -578,7 +706,23 @@ export default function AdminDashboard() {
                                               <span>📋</span> Detailed Evaluation Breakdown:
                                             </h5>
                                             <div className="space-y-3">
-                                              {(sub.answers || sub.questionResults || []).map((ans, qIdx) => {
+                                              {detailsLoading[subId] && (
+                                                <p className="py-4 text-sm font-medium text-slate-500">
+                                                  Loading detailed evaluation…
+                                                </p>
+                                              )}
+                                              {detailsError[subId] && (
+                                                <p className="py-4 text-sm font-medium text-rose-600">
+                                                  {detailsError[subId]}
+                                                </p>
+                                              )}
+                                              {!detailsLoading[subId] && !detailsError[subId] &&
+                                                (submissionDetails[subId]?.questionResults || []).length === 0 && (
+                                                  <p className="py-4 text-sm font-medium text-slate-500">
+                                                    No detailed evaluation is available for this submission.
+                                                  </p>
+                                                )}
+                                              {(submissionDetails[subId]?.questionResults || []).map((ans, qIdx) => {
                                                 const qText =
                                                   ans.questionText ||
                                                   ans.questionId?.questionText ||

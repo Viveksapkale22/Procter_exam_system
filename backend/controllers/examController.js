@@ -7,7 +7,20 @@ const { emitExamLockStatus } = require('../socket/socketHandler');
 exports.getExams = async (req, res) => {
   try {
     const exams = await Exam.find({}).sort({ createdAt: -1 });
-    return res.json(exams);
+    // Only admins need the full question pool (including correct answers) to
+    // manage an exam. Students receive safe exam metadata only.
+    if (req.user.role === 'admin') {
+      return res.json(exams);
+    }
+
+    return res.json(exams.map((exam) => ({
+      _id: exam._id,
+      title: exam.title,
+      subject: exam.subject,
+      durationSeconds: exam.durationSeconds,
+      displayCount: exam.displayCount,
+      isLocked: exam.isLocked,
+    })));
   } catch (error) {
     return res.status(500).json({ message: 'Unable to fetch exams.' });
   }
@@ -95,11 +108,7 @@ exports.toggleLock = async (req, res) => {
     exam.isLocked = !exam.isLocked;
     await exam.save();
 
-    // Emit socket event if socket.io instance is available on app
-    const io = req.app.get('io');
-    if (io) {
-      io.emit('exam-lock-status', { examId: exam._id, isLocked: exam.isLocked });
-    }
+    emitExamLockStatus(exam._id, exam.isLocked);
 
     return res.status(200).json({ isLocked: exam.isLocked, message: `Exam ${exam.isLocked ? 'locked' : 'unlocked'}` });
   } catch (error) {
@@ -121,5 +130,40 @@ exports.deleteExam = async (req, res) => {
     return res.json({ message: 'Exam deleted successfully.' });
   } catch (error) {
     return res.status(500).json({ message: 'Unable to delete exam.', error: error.message });
+  }
+};
+
+exports.updateExam = async (req, res) => {
+  try {
+    const { title, subject, durationSeconds, displayCount, questionPool } = req.body;
+    const exam = await Exam.findById(req.params.examId);
+
+    if (!exam) {
+      return res.status(404).json({ message: 'Exam not found.' });
+    }
+
+    if (!String(title || '').trim() || !String(subject || '').trim()) {
+      return res.status(400).json({ message: 'Exam title and subject are required.' });
+    }
+
+    const questionCount = Number(displayCount) || 5;
+    if (!Array.isArray(questionPool) || questionPool.length < questionCount) {
+      return res.status(400).json({
+        message: `Please provide at least ${questionCount} valid questions.`,
+      });
+    }
+
+    exam.title = String(title).trim();
+    exam.subject = String(subject).trim();
+    exam.durationSeconds = Number(durationSeconds) || 120;
+    exam.displayCount = questionCount;
+    // Existing embedded question ids are retained by the client, which keeps
+    // an in-progress student's stored assignment valid after an edit.
+    exam.questionPool = questionPool;
+    await exam.save();
+
+    return res.json(exam);
+  } catch (error) {
+    return res.status(500).json({ message: 'Failed to update exam.', error: error.message });
   }
 };
