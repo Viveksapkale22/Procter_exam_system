@@ -5,9 +5,15 @@ import StudentDashboard from './pages/StudentDashboard';
 import ExamScreen from './pages/ExamScreen';
 import AdminDashboard from './pages/AdminDashboard';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import InstructionBanner from './components/InstructionBanner';
 
 function AppShell() {
   const { user, logout } = useAuth();
+  const [showInstructions, setShowInstructions] = useState(true);
+
+  useEffect(() => {
+    if (user) setShowInstructions(true);
+  }, [user?.id]);
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800">
@@ -31,6 +37,7 @@ function AppShell() {
       </header>
 
       <main className="mx-auto max-w-6xl px-4 py-6">
+        {user && showInstructions && <InstructionBanner onDismiss={() => setShowInstructions(false)} />}
         <Routes>
           <Route path="/" element={<Login />} />
           <Route path="/student" element={<StudentDashboard />} />

@@ -2,6 +2,14 @@ import { useState } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE } from '../config/api';
+import InstructionBanner from '../components/InstructionBanner';
+
+const DEPARTMENTS = [
+  'CSE (AI & ml) - TE - A',
+  'CSE (AI & ml) - TE - B',
+  'CSE (AI & ml) - SE - A',
+  'CSE (AI & ml) - SE - B',
+];
 
 export default function Login() {
   const { login } = useAuth();
@@ -14,6 +22,7 @@ export default function Login() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showInstructions, setShowInstructions] = useState(true);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -65,6 +74,7 @@ export default function Login() {
       <div className="card p-6">
         <h1 className="mb-4 text-2xl font-bold text-slate-900">Student / Admin Login</h1>
         <p className="mb-6 text-sm text-slate-500">Secure mobile-first exam access.</p>
+        {showInstructions && <InstructionBanner onDismiss={() => setShowInstructions(false)} />}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
@@ -81,13 +91,16 @@ export default function Login() {
             placeholder="Roll number"
             className="w-full rounded-xl border border-slate-300 px-3 py-3 outline-none focus:border-sky-500"
           />
-          <input
+          <select
             name="department"
             value={form.department}
             onChange={handleChange}
-            placeholder="Department"
+            required={form.role === 'student'}
             className="w-full rounded-xl border border-slate-300 px-3 py-3 outline-none focus:border-sky-500"
-          />
+          >
+            <option value="">Select department / division</option>
+            {DEPARTMENTS.map((department) => <option key={department} value={department}>{department}</option>)}
+          </select>
           <input
             type="password"
             name="password"
