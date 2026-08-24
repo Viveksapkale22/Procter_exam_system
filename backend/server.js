@@ -20,7 +20,8 @@ const server = http.createServer(app);
 // Explicit list of allowed origins
 const allowedOrigins = [
   'http://localhost:5173',
-  'https://procter-exam-system.vercel.app'
+  'https://procter-exam-system.vercel.app',
+  'https://test.vivek-22.tech'
 ];
 
 // FRONTEND_URL may contain one or more deployed frontend origins, separated by
