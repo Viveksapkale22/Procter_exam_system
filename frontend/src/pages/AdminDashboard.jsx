@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { useAuth } from '../context/AuthContext';
 import { API_BASE, SOCKET_URL } from '../config/api';
+import FeedbackAdminView from '../components/FeedbackAdminView';
 
 const createQuestionTemplate = () => ({
   questionText: '',
@@ -42,7 +43,7 @@ export default function AdminDashboard() {
   const [detailsLoading, setDetailsLoading] = useState({});
   const [detailsError, setDetailsError] = useState({});
 
-  // Subject Accordion State (tracks expanded subject names)
+  // Subject Accordion State
   const [expandedSubjects, setExpandedSubjects] = useState([]);
 
   useEffect(() => {
@@ -75,7 +76,9 @@ export default function AdminDashboard() {
 
     socket.emit('join-admin-room');
 
-    return () => socket.disconnect();
+    return () => {
+      socket.disconnect();
+    };
   }, [navigate, token, user]);
 
   const fetchInitialData = async () => {
@@ -113,7 +116,7 @@ export default function AdminDashboard() {
     return grouped;
   }, [rawSubmissions]);
 
-  // Auto-expand the first subject on initial data load
+  // Auto-expand first subject on initial data load
   useEffect(() => {
     const subjects = Object.keys(groupedFeed);
     if (subjects.length > 0 && expandedSubjects.length === 0) {
@@ -121,7 +124,6 @@ export default function AdminDashboard() {
     }
   }, [groupedFeed]);
 
-  // Toggle single subject accordion collapse/expand
   const toggleSubjectAccordion = (subject) => {
     setExpandedSubjects((prev) =>
       prev.includes(subject) ? prev.filter((s) => s !== subject) : [...prev, subject]
@@ -181,7 +183,6 @@ export default function AdminDashboard() {
     setActiveTab('create');
   };
 
-  // Question Form Handlers
   const addQuestionField = () => setQuestionPool((prev) => [...prev, createQuestionTemplate()]);
 
   const removeQuestionField = (index) => {
@@ -190,26 +191,22 @@ export default function AdminDashboard() {
   };
 
   const handleQuestionChange = (index, field, value) => {
-    setQuestionPool((prev) => {
-      const next = [...prev];
-      if (field === 'questionText') next[index] = { ...next[index], questionText: value };
-      if (field === 'level') next[index] = { ...next[index], level: value };
-      if (field === 'option') {
-        next[index] = {
-          ...next[index],
-          options: next[index].options.map((opt, optIdx) =>
-            optIdx === value.optionIndex ? value.optionValue : opt
-          ),
-        };
-      }
-      if (field === 'correctOptionIndex') {
-        next[index] = { ...next[index], correctOptionIndex: Number(value) };
-      }
-      return next;
-    });
+    setQuestionPool((prev) =>
+      prev.map((item, i) => {
+        if (i !== index) return item;
+        if (field === 'questionText') return { ...item, questionText: value };
+        if (field === 'level') return { ...item, level: value };
+        if (field === 'correctOptionIndex') return { ...item, correctOptionIndex: Number(value) };
+        if (field === 'option') {
+          const updatedOptions = [...item.options];
+          updatedOptions[value.optionIndex] = value.optionValue;
+          return { ...item, options: updatedOptions };
+        }
+        return item;
+      })
+    );
   };
 
-  // Exam creation and editing share the same validated form.
   const saveExam = async () => {
     const cleanedQuestions = questionPool
       .map((q) => ({
@@ -243,11 +240,9 @@ export default function AdminDashboard() {
         ? await axios.put(`${API_BASE}/exams/${editingExamId}`, payload, {
             headers: { Authorization: `Bearer ${token}` },
           })
-        : await axios.post(
-        `${API_BASE}/exams/create`,
-        payload,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+        : await axios.post(`${API_BASE}/exams/create`, payload, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
 
       setExams((prev) =>
         editingExamId
@@ -268,7 +263,7 @@ export default function AdminDashboard() {
       await axios.delete(`${API_BASE}/submissions/${submissionId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setRawSubmissions((previous) => previous.filter((submission) => (submission.id || submission._id) !== submissionId));
+      setRawSubmissions((previous) => previous.filter((sub) => (sub.id || sub._id) !== submissionId));
       setExpandedStudent((previous) => (previous === submissionId ? null : previous));
     } catch (error) {
       alert(error.response?.data?.message || 'Failed to delete submission.');
@@ -281,14 +276,13 @@ export default function AdminDashboard() {
       await axios.delete(`${API_BASE}/submissions/subject/${encodeURIComponent(subject)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      setRawSubmissions((previous) => previous.filter((submission) => submission.subject !== subject));
+      setRawSubmissions((previous) => previous.filter((sub) => sub.subject !== subject));
       setExpandedSubjects((previous) => previous.filter((item) => item !== subject));
     } catch (error) {
       alert(error.response?.data?.message || 'Failed to delete subject submissions.');
     }
   };
 
-  // Lock / Unlock System
   const toggleLock = async (examId) => {
     try {
       const response = await axios.patch(
@@ -360,6 +354,14 @@ export default function AdminDashboard() {
           }`}
         >
           Subject Submissions
+        </button>
+        <button
+          onClick={() => setActiveTab('feedback')}
+          className={`text-left p-3 rounded-xl font-medium transition-all ${
+            activeTab === 'feedback' ? 'bg-sky-600 text-white shadow-md' : 'text-slate-700 hover:bg-slate-100'
+          }`}
+        >
+          Student Feedback
         </button>
       </div>
 
@@ -556,7 +558,7 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* SUBMISSION FEED TAB (ACCORDION LAYOUT) */}
+        {/* SUBMISSION FEED TAB */}
         {activeTab === 'submissions' && (
           <div className="card p-6 bg-white rounded-xl shadow-sm border border-slate-200">
             <div className="mb-6 flex items-center justify-between">
@@ -579,7 +581,6 @@ export default function AdminDashboard() {
                   const isSubjectExpanded = expandedSubjects.includes(subject);
                   const submissionsList = groupedFeed[subject];
 
-                  // Calculate subject performance metrics
                   const avgScore = (
                     submissionsList.reduce((acc, curr) => acc + (curr.score || 0), 0) /
                     (submissionsList.length || 1)
@@ -627,7 +628,9 @@ export default function AdminDashboard() {
                       {isSubjectExpanded && (
                         <div className="overflow-x-auto border-t border-slate-200">
                           <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-rose-50 px-4 py-3">
-                            <p className="text-xs font-medium text-rose-800">Remove all records in this subject when they are no longer needed.</p>
+                            <p className="text-xs font-medium text-rose-800">
+                              Remove all records in this subject when they are no longer needed.
+                            </p>
                             <button
                               type="button"
                               onClick={() => deleteSubjectSubmissions(subject, submissionsList.length)}
@@ -716,85 +719,34 @@ export default function AdminDashboard() {
                                                   {detailsError[subId]}
                                                 </p>
                                               )}
-                                              {!detailsLoading[subId] && !detailsError[subId] &&
-                                                (submissionDetails[subId]?.questionResults || []).length === 0 && (
-                                                  <p className="py-4 text-sm font-medium text-slate-500">
-                                                    No detailed evaluation is available for this submission.
-                                                  </p>
-                                                )}
-                                              {(submissionDetails[subId]?.questionResults || []).map((ans, qIdx) => {
-                                                const qText =
-                                                  ans.questionText ||
-                                                  ans.questionId?.questionText ||
-                                                  `Question ${qIdx + 1}`;
-                                                const options = ans.options || ans.questionId?.options || [];
-                                                const selectedIdx = ans.selectedOption;
-                                                const correctIdx =
-                                                  ans.correctOptionIndex ?? ans.questionId?.correctOptionIndex;
-                                                const isCorrect =
-                                                  ans.isCorrect ?? (selectedIdx === correctIdx);
-
-                                                const selectedText =
-                                                  selectedIdx >= 0 && options[selectedIdx]
-                                                    ? options[selectedIdx]
-                                                    : selectedIdx === -1
-                                                    ? 'Not Answered'
-                                                    : `Option ${selectedIdx + 1}`;
-                                                const correctText =
-                                                  correctIdx >= 0 && options[correctIdx]
-                                                    ? options[correctIdx]
-                                                    : `Option ${correctIdx + 1}`;
-
-                                                return (
-                                                  <div
-                                                    key={qIdx}
-                                                    className={`p-4 rounded-xl border ${
-                                                      isCorrect
-                                                        ? 'bg-emerald-50/40 border-emerald-200'
-                                                        : 'bg-rose-50/40 border-rose-200'
-                                                    }`}
-                                                  >
-                                                    <div className="flex justify-between items-start font-semibold text-slate-900 mb-2">
-                                                      <span>
-                                                        Q{qIdx + 1}: {qText}
-                                                      </span>
+                                              {submissionDetails[subId] && (
+                                                <div className="space-y-2 text-xs">
+                                                  {submissionDetails[subId].answers?.map((ans, qIdx) => (
+                                                    <div
+                                                      key={qIdx}
+                                                      className="p-3 border rounded-lg bg-slate-50 flex justify-between items-center"
+                                                    >
+                                                      <div>
+                                                        <p className="font-bold text-slate-800">
+                                                          Q{qIdx + 1}: {ans.questionText || 'Question'}
+                                                        </p>
+                                                        <p className="text-slate-600">
+                                                          Selected Option: {ans.selectedOption ?? 'N/A'}
+                                                        </p>
+                                                      </div>
                                                       <span
-                                                        className={`text-xs px-2.5 py-1 rounded-full font-bold shrink-0 ml-2 ${
-                                                          isCorrect
-                                                            ? 'bg-emerald-200 text-emerald-800'
-                                                            : 'bg-rose-200 text-rose-800'
+                                                        className={`font-bold px-2 py-1 rounded ${
+                                                          ans.isCorrect
+                                                            ? 'bg-emerald-100 text-emerald-700'
+                                                            : 'bg-rose-100 text-rose-700'
                                                         }`}
                                                       >
-                                                        {isCorrect ? '✔ Correct' : '✖ Wrong'}
+                                                        {ans.isCorrect ? 'Correct' : 'Incorrect'}
                                                       </span>
                                                     </div>
-                                                    <div className="text-xs space-y-1 text-slate-700 mt-2">
-                                                      <p>
-                                                        <span className="font-bold">Student Selected:</span>{' '}
-                                                        <span
-                                                          className={
-                                                            isCorrect
-                                                              ? 'text-emerald-700 font-medium'
-                                                              : 'text-rose-700 font-medium'
-                                                          }
-                                                        >
-                                                          {selectedText}
-                                                        </span>
-                                                      </p>
-                                                      {!isCorrect && (
-                                                        <p>
-                                                          <span className="font-bold text-emerald-700">
-                                                            Correct Answer:
-                                                          </span>{' '}
-                                                          <span className="font-medium text-emerald-800">
-                                                            {correctText}
-                                                          </span>
-                                                        </p>
-                                                      )}
-                                                    </div>
-                                                  </div>
-                                                );
-                                              })}
+                                                  ))}
+                                                </div>
+                                              )}
                                             </div>
                                           </div>
                                         </td>
@@ -813,6 +765,11 @@ export default function AdminDashboard() {
               </div>
             )}
           </div>
+        )}
+
+        {/* FEEDBACK TAB */}
+        {activeTab === 'feedback' && (
+          <FeedbackAdminView />
         )}
       </div>
     </div>

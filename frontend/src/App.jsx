@@ -6,10 +6,12 @@ import ExamScreen from './pages/ExamScreen';
 import AdminDashboard from './pages/AdminDashboard';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import InstructionBanner from './components/InstructionBanner';
+import FeedbackModal from './components/FeedbackModal';
 
 function AppShell() {
   const { user, logout } = useAuth();
   const [showInstructions, setShowInstructions] = useState(true);
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 
   useEffect(() => {
     if (user) setShowInstructions(true);
@@ -22,17 +24,26 @@ function AppShell() {
           <div>
             <Link to="/" className="text-lg font-bold tracking-wide">Proctor Exam</Link>
           </div>
-          {user ? (
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-slate-200">{user.name}</span>
-              <button
-                onClick={logout}
-                className="rounded-lg bg-white/10 px-3 py-2 text-sm font-medium hover:bg-white/20"
-              >
-                Logout
-              </button>
-            </div>
-          ) : null}
+          <div className="flex items-center gap-2 sm:gap-3">
+            <button
+              type="button"
+              onClick={() => setIsFeedbackOpen(true)}
+              className="rounded-lg bg-emerald-500 px-3 py-2 text-sm font-bold text-white shadow-sm hover:bg-emerald-400"
+            >
+              Give Feedback
+            </button>
+            {user ? (
+              <>
+                <span className="hidden text-sm text-slate-200 sm:inline">{user.name}</span>
+                <button
+                  onClick={logout}
+                  className="rounded-lg bg-white/10 px-3 py-2 text-sm font-medium hover:bg-white/20"
+                >
+                  Logout
+                </button>
+              </>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -45,6 +56,7 @@ function AppShell() {
           <Route path="/admin" element={<AdminDashboard />} />
         </Routes>
       </main>
+      {isFeedbackOpen && <FeedbackModal user={user} onClose={() => setIsFeedbackOpen(false)} />}
     </div>
   );
 }

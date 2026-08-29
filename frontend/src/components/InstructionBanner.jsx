@@ -6,9 +6,9 @@ export default function InstructionBanner({ onDismiss }) {
         <p className="text-sm font-bold">Exam Instructions</p>
         <p className="mt-1 text-xs leading-5 text-emerald-800">
           <h1>Dear IKS–TE–B Students,</h1>
-          <h1>Please re-register and log in using your correct roll number. Use the whole number only (e.g., 12, 64). Do not use 004 or 00064. Enter accurate details and complete the test as soon as possible.</h1>
-          <h1>.</h1><h1>Vaishanavi Patil: Your registration and exam(viva) data is safe. Please use your existing details to log in.</h1>
-          
+          <h1>Thank you all for participating in the examination and for your valuable cooperation and support. I truly enjoyed this journey with you all and will always cherish these memories. I sincerely wish you great success and happiness in your future. </h1>
+          <h1></h1>
+           Kindly take a moment to fill out the feedback form above and share your valuable suggestions and areas for improvement. Your honest feedback will help me grow and improve, and I am looking forward to hearing from you all.
             </p> 
      
       </div>

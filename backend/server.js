@@ -8,6 +8,7 @@ const { initSocket } = require('./socket/socketHandler');
 const authRoutes = require('./routes/authRoutes');
 const examRoutes = require('./routes/examRoutes');
 const submissionRoutes = require('./routes/submissionRoutes');
+const feedbackRoutes = require('./routes/feedbackRoutes');
 
 const dns = require('dns');
 if (process.env.NODE_ENV !== 'production') {
@@ -71,6 +72,7 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/exams', examRoutes);
 app.use('/api/submissions', submissionRoutes);
+app.use('/api/feedback', feedbackRoutes);
 
 initSocket(server);
 
