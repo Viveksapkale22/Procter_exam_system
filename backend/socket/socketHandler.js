@@ -8,8 +8,7 @@ function initSocket(server) {
     'http://localhost:5173',
     'https://procter-exam-system.vercel.app',
     'https://test.vivek-22.tech',
-    'https://www.vivek-22.tech',
-    'https://vivek-22.tech'
+    'https://www.vivek-22.tech'
   ];
 
   const configuredOrigins = (process.env.FRONTEND_URL || '')
