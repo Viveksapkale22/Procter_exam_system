@@ -21,6 +21,7 @@ const server = http.createServer(app);
 // Explicit list of allowed origins
 const allowedOrigins = [
   'http://localhost:5173',
+  'http://localhost:5174',
   'https://procter-exam-system.vercel.app',
   'https://test.vivek-22.tech',
   'https://www.vivek-22.tech/'
