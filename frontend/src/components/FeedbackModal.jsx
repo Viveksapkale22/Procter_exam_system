@@ -8,7 +8,6 @@ export default function FeedbackModal({ user, onClose }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    setForm({ name: user?.name || '', rollNumber: user?.rollNumber || '', department: user?.department || '', message: '' });
   }, [user]);
 
   const updateField = (field, value) => setForm((previous) => ({ ...previous, [field]: value }));
