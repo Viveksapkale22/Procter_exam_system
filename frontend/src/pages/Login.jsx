@@ -5,6 +5,8 @@ import { API_BASE } from '../config/api';
 import InstructionBanner from '../components/InstructionBanner';
 
 const DEPARTMENTS = [
+  'FE - A',
+  'FE - B',
   'CSE (AI & ml) - TE - A',
   'CSE (AI & ml) - TE - B',
   'CSE (AI & ml) - SE - A',
